@@ -14,6 +14,7 @@ import math
 import collections
 import json
 import os
+import select as _select
 
 try:
     import urllib.request
@@ -257,6 +258,17 @@ def get_input():
         tty.setraw(sys.stdin.fileno())
         while running:
             ch = sys.stdin.read(1)
+            if ch == '\x1b':
+                # Pruefe ob Escape-Sequenz (Pfeiltasten) folgt
+                if _select.select([sys.stdin], [], [], 0.02)[0]:
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[' and _select.select([sys.stdin], [], [], 0.02)[0]:
+                        ch3 = sys.stdin.read(1)
+                        arrow_map = {'A': 'UP', 'B': 'DOWN', 'C': 'RIGHT', 'D': 'LEFT'}
+                        ch = arrow_map.get(ch3, '\x1b')
+                    else:
+                        ch = '\x1b'
+                # else: einzelnes ESC
             with input_lock:
                 key_pressed = ch
                 key_queue.append(ch)
@@ -1151,10 +1163,19 @@ def play_tetris():
 #                    PONG GAME 
 # ============================================================
 
-def play_pong():
-    PH, PW, WIN = 10, 2, 7
-    p1, p2 = 27.0, 27.0; PS = 2.5
-    bx, by = 32.0, 32.0; bs = 1.3
+def play_pong(difficulty=2):
+    # Schwierigkeitsstufen: 1=EINFACH, 2=MITTEL, 3=SCHWER
+    if difficulty == 1:
+        PH, PW, WIN = 12, 2, 5
+        PS = 2.8; bs = 1.0
+    elif difficulty == 3:
+        PH, PW, WIN = 8, 2, 7
+        PS = 2.2; bs = 1.6
+    else:
+        PH, PW, WIN = 10, 2, 7
+        PS = 2.5; bs = 1.3
+    p1, p2 = 27.0, 27.0
+    bx, by = 32.0, 32.0
     bvx = bs*random.choice([-1,1]); bvy = random.uniform(-0.5,0.5)
     s1, s2, rl = 0, 0, 0
     trail = collections.deque(maxlen=10)
@@ -1164,22 +1185,29 @@ def play_pong():
 
     while running:
         now = time.time(); dt = min(now-lt, 0.05); lt = now
-        k = consume_key()
-        if k == '\x1b': return
-        if k == 'w': p1 = max(0, p1-PS*2)
-        elif k == 's': p1 = min(64-PH, p1+PS*2)
+
+        # Alle Keys aus der Queue verarbeiten (Multiplayer)
+        while True:
+            k = consume_queue()
+            if k is None: break
+            if k == '\x1b': return
+            # Spieler 1 (links): W/S
+            if k in ('w', 'W'): p1 = max(0, p1-PS*2)
+            elif k in ('s', 'S'): p1 = min(64-PH, p1+PS*2)
+            # Spieler 2 (rechts): Pfeiltasten
+            elif k == 'UP': p2 = max(0, p2-PS*2)
+            elif k == 'DOWN': p2 = min(64-PH, p2+PS*2)
+
+        # Gehaltene Tasten fuer sanfte Bewegung
         held = peek_key()
-        if held == 'w': p1 = max(0, p1-PS)
-        elif held == 's': p1 = min(64-PH, p1+PS)
+        if held in ('w', 'W'): p1 = max(0, p1-PS)
+        elif held in ('s', 'S'): p1 = min(64-PH, p1+PS)
+        elif held == 'UP': p2 = max(0, p2-PS)
+        elif held == 'DOWN': p2 = min(64-PH, p2+PS)
 
         if srv:
             if now-st > 1.0: srv = False
         else:
-            ais = 1.8*(1.0+rl*0.015)
-            dz = max(1.0, 4.0-rl*0.2)
-            diff = (by-PH/2)-p2
-            if abs(diff) > dz:
-                p2 = min(64-PH, p2+ais) if diff > 0 else max(0, p2-ais)
             sm = 1.0+rl*0.02
             bx += bvx*sm; by += bvy*sm
 
@@ -1871,14 +1899,26 @@ def show_weather():
 #                     BREAKOUT GAME
 # ============================================================
 
-def play_breakout():
+def play_breakout(difficulty=2):
     COLS_B = 10
     ROWS_B = 6
     BRICK_W = 6
     BRICK_H = 3
     BRICK_OFFSET_X = 2
     BRICK_OFFSET_Y = 6
-    PADDLE_W = 10
+    # Schwierigkeitsstufen: 1=EINFACH, 2=MITTEL, 3=SCHWER
+    if difficulty == 1:
+        PADDLE_W = 14
+        lives = 5
+        start_speed = 1.0
+    elif difficulty == 3:
+        PADDLE_W = 8
+        lives = 2
+        start_speed = 1.5
+    else:
+        PADDLE_W = 10
+        lives = 3
+        start_speed = 1.2
     PADDLE_H = 2
     PADDLE_Y = 60
 
@@ -1893,7 +1933,6 @@ def play_breakout():
 
     level = 1
     score = 0
-    lives = 3
     particles = ParticleSystem()
 
     def create_bricks():
@@ -1908,7 +1947,7 @@ def play_breakout():
 
     bricks = create_bricks()
     ball_x, ball_y = 32.0, 55.0
-    ball_speed = 1.2 + level * 0.1
+    ball_speed = start_speed + level * 0.1
     angle = random.uniform(-0.8, 0.8) - math.pi / 2
     ball_vx = ball_speed * math.cos(angle)
     ball_vy = ball_speed * math.sin(angle)
@@ -2044,7 +2083,7 @@ def play_breakout():
                            8, *color, spread=25, life=0.5)
             if not bricks:
                 level += 1
-                ball_speed = min(2.5, 1.2 + level * 0.15)
+                ball_speed = min(2.5, start_speed + level * 0.15)
                 animation_flash(0.15, 0, 255, 0)
                 bricks = create_bricks()
                 serving = True
@@ -2096,12 +2135,18 @@ def play_breakout():
 #                    FLAPPY BIRD
 # ============================================================
 
-def play_flappy():
-    GRAVITY = 0.08
-    FLAP_FORCE = -1.8
+def play_flappy(difficulty=2):
+    # Schwierigkeitsstufen: 1=EINFACH, 2=MITTEL, 3=SCHWER
+    if difficulty == 1:
+        GRAVITY = 0.06; FLAP_FORCE = -1.7
+        GAP_H = 22; PIPE_SPEED = 0.6
+    elif difficulty == 3:
+        GRAVITY = 0.10; FLAP_FORCE = -1.9
+        GAP_H = 14; PIPE_SPEED = 1.0
+    else:
+        GRAVITY = 0.08; FLAP_FORCE = -1.8
+        GAP_H = 18; PIPE_SPEED = 0.8
     PIPE_W = 6
-    GAP_H = 18
-    PIPE_SPEED = 0.8
     GROUND_Y = 59
     BIRD_X = 15
 
@@ -2429,13 +2474,22 @@ def play_game_of_life():
 #                  REACTION TIME GAME
 # ============================================================
 
-def play_reaction():
+def play_reaction(difficulty=2):
     clear_input()
     particles = ParticleSystem()
     best_time = 9999
     times = []
     round_num = 0
-    TOTAL_ROUNDS = 5
+    # Schwierigkeitsstufen: 1=EINFACH, 2=MITTEL, 3=SCHWER
+    if difficulty == 1:
+        TOTAL_ROUNDS = 3
+        wait_min, wait_max = 1.5, 3.5
+    elif difficulty == 3:
+        TOTAL_ROUNDS = 7
+        wait_min, wait_max = 1.0, 6.0
+    else:
+        TOTAL_ROUNDS = 5
+        wait_min, wait_max = 1.5, 5.0
 
     while running and round_num < TOTAL_ROUNDS:
         # Phase 1: Bereit machen
@@ -2457,7 +2511,7 @@ def play_reaction():
             time.sleep(0.03)
 
         # Phase 2: Rotes Warten
-        wait_time = random.uniform(1.5, 5.0)
+        wait_time = random.uniform(wait_min, wait_max)
         wait_start = time.time()
         too_early = False
 
@@ -2587,10 +2641,20 @@ def play_reaction():
 #                 MAZE GENERATOR / RUNNER
 # ============================================================
 
-def play_maze():
+def play_maze(difficulty=2):
     CELL_SIZE = 2
     MAZE_W = 31
     MAZE_H = 31
+    # Schwierigkeitsstufen: 1=EINFACH, 2=MITTEL, 3=SCHWER
+    if difficulty == 1:
+        default_sight = 8
+        fog_default = False
+    elif difficulty == 3:
+        default_sight = 4
+        fog_default = True
+    else:
+        default_sight = 6
+        fog_default = True
 
     def generate_maze():
         maze = [[1]*MAZE_H for _ in range(MAZE_W)]
@@ -2623,9 +2687,9 @@ def play_maze():
         goal_x, goal_y = MAZE_W-2, MAZE_H-2
         maze[goal_x][goal_y] = 0
         steps = 0
-        fog = True
+        fog = fog_default
         particles = ParticleSystem()
-        SIGHT = 6
+        SIGHT = default_sight
         clear_input()
 
         while running:
@@ -2951,28 +3015,84 @@ def show_visualizer():
 #                    HAUPTMENUE
 # ============================================================
 
+def show_difficulty_menu(title, title_color, starfield, menu_start):
+    """Zeigt ein Schwierigkeits-Submenue (EINFACH/MITTEL/SCHWER).
+    Gibt 1, 2 oder 3 zurueck, oder None bei ESC."""
+    sub_sel = 0
+    submenu = [("EINFACH",(0,255,0)),
+               ("MITTEL",(255,200,0)),
+               ("SCHWER",(255,50,50))]
+    while running:
+        now2 = time.time()
+        canvas.Clear()
+        starfield.draw(canvas, now2 - menu_start)
+        draw_text_centered(canvas, title, 5,
+                           title_color[0], title_color[1], title_color[2])
+        for x in range(15, 49):
+            h = (now2*0.5 + x*0.03) % 1.0
+            r, g, b = hsv_to_rgb(h, 1.0, 0.3)
+            draw_pixel(canvas, x, 12, r, g, b)
+        for i, (label, color) in enumerate(submenu):
+            y = 18 + i*15
+            if i == sub_sel:
+                pulse = 0.6+0.4*math.sin(now2*5)
+                r = int(color[0]*pulse)
+                g = int(color[1]*pulse)
+                b = int(color[2]*pulse)
+                ax = 4+int(math.sin(now2*6)*1.5)
+                draw_text(canvas, ">", ax, y, r, g, b)
+                draw_text(canvas, f"{i+1} {label}", 12, y, r, g, b)
+            else:
+                draw_text(canvas, f"{i+1} {label}",
+                          12, y, color[0]//4, color[1]//4, color[2]//4)
+        if int(now2*1.5) % 2:
+            draw_text_centered(canvas, "ESC BACK", 58, 50, 50, 50)
+        matrix.SwapOnVSync(canvas)
+        sk = consume_key()
+        if sk in ('w','W','UP'): sub_sel = (sub_sel-1) % 3
+        elif sk in ('s','S','DOWN'): sub_sel = (sub_sel+1) % 3
+        elif sk == '1': animation_transition(); return 1
+        elif sk == '2': animation_transition(); return 2
+        elif sk == '3': animation_transition(); return 3
+        elif sk in ('\r','\n','d','D'):
+            animation_transition(); return sub_sel+1
+        elif sk == '\x1b': return None
+        time.sleep(0.05)
+    return None
+
 try:
     starfield = Starfield(50)
     selected = 0
 
-    # Alle Menue-Eintraege: (Name, Farbe)
-    # NEU: Spotify + Visualizer hinzugefuegt!
-    menu_items = [
-        ("SNAKE",      (0, 255, 0)),
-        ("TETRIS",     (0, 150, 255)),
-        ("PONG",       (255, 0, 255)),
-        ("BREAKOUT",   (255, 100, 0)),
-        ("FLAPPY",     (255, 220, 0)),
-        ("REACTION",   (255, 50, 50)),
-        ("LABYRINTH",  (0, 255, 200)),
-        ("LIFE",       (200, 100, 0)),
-        ("DVD",        (255, 0, 100)),
-        ("ANALOG",     (100, 200, 255)),
-        ("DIGITAL",    (0, 200, 200)),
-        ("WETTER",     (100, 255, 100)),
-        ("SPOTIFY",    (30, 185, 64)),      # NEU!
-        ("VISUALIZER", (255, 0, 255)),      # NEU!
+    # Tab-Kategorien: SPIELE und EXTRAS
+    tab_names = ["SPIELE", "EXTRAS"]
+    tab_colors = [(0, 255, 100), (100, 150, 255)]
+    current_tab = 0
+
+    tabs = [
+        # Tab 0: SPIELE
+        [
+            ("SNAKE",      (0, 255, 0)),
+            ("TETRIS",     (0, 150, 255)),
+            ("PONG",       (255, 0, 255)),
+            ("BREAKOUT",   (255, 100, 0)),
+            ("FLAPPY",     (255, 220, 0)),
+            ("REACTION",   (255, 50, 50)),
+            ("LABYRINTH",  (0, 255, 200)),
+        ],
+        # Tab 1: EXTRAS
+        [
+            ("LIFE",       (200, 100, 0)),
+            ("DVD",        (255, 0, 100)),
+            ("ANALOG",     (100, 200, 255)),
+            ("DIGITAL",    (0, 200, 200)),
+            ("WETTER",     (100, 255, 100)),
+            ("SPOTIFY",    (30, 185, 64)),
+            ("VISUALIZER", (255, 0, 255)),
+        ],
     ]
+
+    menu_items = tabs[current_tab]
 
     scroll_offset = 0
     VISIBLE_ITEMS = 4
@@ -3018,11 +3138,18 @@ try:
 
         draw_text_centered(canvas, "HUB", 9, 100, 100, 120)
 
-        # Rainbow Trennlinie
-        for x in range(6, 58):
-            h = (t*0.5 + x*0.02) % 1.0
-            r, g, b = hsv_to_rgb(h, 1.0, 0.3)
-            draw_pixel(canvas, x, 15, r, g, b)
+        # Tab-Anzeige
+        for ti in range(len(tab_names)):
+            tc = tab_colors[ti]
+            tx_pos = 2 + ti * 32
+            if ti == current_tab:
+                pulse_tab = 0.7 + 0.3*math.sin(t*4)
+                draw_text(canvas, tab_names[ti], tx_pos, 14,
+                          int(tc[0]*pulse_tab), int(tc[1]*pulse_tab),
+                          int(tc[2]*pulse_tab))
+            else:
+                draw_text(canvas, tab_names[ti], tx_pos, 14,
+                          tc[0]//6, tc[1]//6, tc[2]//6)
 
         # Scroll sicherstellen
         if selected < scroll_offset:
@@ -3035,7 +3162,7 @@ try:
             if idx >= len(menu_items): break
 
             name, base_color = menu_items[idx]
-            y = 18 + vi * 11
+            y = 21 + vi * 10
             is_selected = (idx == selected)
 
             if is_selected:
@@ -3062,14 +3189,14 @@ try:
         if scroll_offset > 0:
             pulse_up = 0.5 + 0.5*math.sin(t*4)
             v = int(80*pulse_up)
-            draw_pixel(canvas, 60, 17, v, v, v)
-            draw_pixel(canvas, 59, 18, v, v, v)
-            draw_pixel(canvas, 61, 18, v, v, v)
+            draw_pixel(canvas, 60, 20, v, v, v)
+            draw_pixel(canvas, 59, 21, v, v, v)
+            draw_pixel(canvas, 61, 21, v, v, v)
 
         if scroll_offset + VISIBLE_ITEMS < len(menu_items):
             pulse_dn = 0.5 + 0.5*math.sin(t*4 + 1)
             v = int(80*pulse_dn)
-            bottom_y = 18 + VISIBLE_ITEMS*11 - 3
+            bottom_y = 21 + VISIBLE_ITEMS*10 - 3
             draw_pixel(canvas, 60, bottom_y+2, v, v, v)
             draw_pixel(canvas, 59, bottom_y+1, v, v, v)
             draw_pixel(canvas, 61, bottom_y+1, v, v, v)
@@ -3080,20 +3207,28 @@ try:
 
         # Footer
         if int(t*1.5) % 2:
-            draw_text(canvas, "WASD", 2, 58, 40, 40, 40)
+            draw_text(canvas, "W/S TAB", 2, 58, 40, 40, 40)
 
         matrix.SwapOnVSync(canvas)
 
         # --- INPUT ---
         k = consume_key()
 
-        if k in ('w', 'W'):
+        # Tab wechseln mit Tab-Taste oder A
+        if k in ('\t', 'a', 'A'):
+            current_tab = (current_tab + 1) % len(tabs)
+            menu_items = tabs[current_tab]
+            selected = 0
+            scroll_offset = 0
+            continue
+
+        if k in ('w', 'W', 'UP'):
             selected = (selected - 1) % len(menu_items)
-        elif k in ('s', 'S'):
+        elif k in ('s', 'S', 'DOWN'):
             selected = (selected + 1) % len(menu_items)
 
         # Direktwahl 1-9
-        if k and k.isdigit() and k != '0':
+        if k and len(k) == 1 and k.isdigit() and k != '0':
             num = int(k) - 1
             if num < len(menu_items):
                 selected = num
@@ -3104,8 +3239,12 @@ try:
             animation_transition()
             clear_input()
 
-            if selected == 0:
-                # Snake Submenue
+            # Aktuellen Eintragsnamen holen
+            item_name = menu_items[selected][0]
+            item_color = menu_items[selected][1]
+
+            if item_name == "SNAKE":
+                # Snake Submenue (NORMAL/ULTIMATE)
                 sub_sel = 0
                 while running:
                     now2 = time.time()
@@ -3138,9 +3277,9 @@ try:
                                            58, 50, 50, 50)
                     matrix.SwapOnVSync(canvas)
                     sk = consume_key()
-                    if sk in ('w','W'):
+                    if sk in ('w','W','UP'):
                         sub_sel = (sub_sel-1) % 2
-                    elif sk in ('s','S'):
+                    elif sk in ('s','S','DOWN'):
                         sub_sel = (sub_sel+1) % 2
                     elif sk == '1':
                         animation_transition()
@@ -3154,32 +3293,42 @@ try:
                     elif sk == '\x1b': break
                     time.sleep(0.05)
 
-            elif selected == 1:
+            elif item_name == "TETRIS":
                 play_tetris()
-            elif selected == 2:
-                play_pong()
-            elif selected == 3:
-                play_breakout()
-            elif selected == 4:
-                play_flappy()
-            elif selected == 5:
-                play_reaction()
-            elif selected == 6:
-                play_maze()
-            elif selected == 7:
+            elif item_name == "PONG":
+                d = show_difficulty_menu("PONG", item_color,
+                                         starfield, menu_start)
+                if d is not None: play_pong(d)
+            elif item_name == "BREAKOUT":
+                d = show_difficulty_menu("BREAKOUT", item_color,
+                                         starfield, menu_start)
+                if d is not None: play_breakout(d)
+            elif item_name == "FLAPPY":
+                d = show_difficulty_menu("FLAPPY", item_color,
+                                         starfield, menu_start)
+                if d is not None: play_flappy(d)
+            elif item_name == "REACTION":
+                d = show_difficulty_menu("REACTION", item_color,
+                                         starfield, menu_start)
+                if d is not None: play_reaction(d)
+            elif item_name == "LABYRINTH":
+                d = show_difficulty_menu("LABYRINTH", item_color,
+                                         starfield, menu_start)
+                if d is not None: play_maze(d)
+            elif item_name == "LIFE":
                 play_game_of_life()
-            elif selected == 8:
+            elif item_name == "DVD":
                 play_dvd_bounce()
-            elif selected == 9:
+            elif item_name == "ANALOG":
                 show_analog_clock()
-            elif selected == 10:
+            elif item_name == "DIGITAL":
                 show_digital_clock()
-            elif selected == 11:
+            elif item_name == "WETTER":
                 show_weather()
-            elif selected == 12:
-                show_spotify()        # NEU!
-            elif selected == 13:
-                show_visualizer()     # NEU!
+            elif item_name == "SPOTIFY":
+                show_spotify()
+            elif item_name == "VISUALIZER":
+                show_visualizer()
 
             clear_input()
             menu_start = time.time()
