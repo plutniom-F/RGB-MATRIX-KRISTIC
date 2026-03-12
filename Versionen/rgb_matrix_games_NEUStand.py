@@ -2814,9 +2814,9 @@ def play_maze(difficulty=2):
 #   export SPOTIPY_CLIENT_SECRET="dein_secret"
 #   export SPOTIPY_REDIRECT_URI="http://localhost:8888/callback"
 
-SPOTIFY_CLIENT_ID = ""        # <-- HIER DEINE CLIENT ID
-SPOTIFY_CLIENT_SECRET = ""    # <-- HIER DEIN CLIENT SECRET
-SPOTIFY_REDIRECT_URI = "http://localhost:8888/callback"
+SPOTIFY_CLIENT_ID = "6dcbdf2fb3cb44ca94e024cdcbe7156f"        # <-- HIER DEINE CLIENT ID
+SPOTIFY_CLIENT_SECRET = "19775147c587428391243c4f96c1042b"    # <-- HIER DEIN CLIENT SECRET
+SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 
 # Wenn hier ausgefuellt, werden diese Werte benutzt.
 # Wenn leer, wird auf Umgebungsvariablen zurueckgegriffen.
