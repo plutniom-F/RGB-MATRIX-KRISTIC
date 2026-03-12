@@ -260,9 +260,9 @@ def get_input():
             ch = sys.stdin.read(1)
             if ch == '\x1b':
                 # Pruefe ob Escape-Sequenz (Pfeiltasten) folgt
-                if _select.select([sys.stdin], [], [], 0.05)[0]:
+                if _select.select([sys.stdin], [], [], 0.02)[0]:
                     ch2 = sys.stdin.read(1)
-                    if ch2 == '[' and _select.select([sys.stdin], [], [], 0.05)[0]:
+                    if ch2 == '[' and _select.select([sys.stdin], [], [], 0.02)[0]:
                         ch3 = sys.stdin.read(1)
                         arrow_map = {'A': 'UP', 'B': 'DOWN', 'C': 'RIGHT', 'D': 'LEFT'}
                         ch = arrow_map.get(ch3, '\x1b')
@@ -3214,13 +3214,13 @@ try:
         # --- INPUT ---
         k = consume_key()
 
-        # Tab wechseln mit Tab-Taste oder A/D
+        # Tab wechseln mit Tab-Taste oder A
         if k in ('\t', 'a', 'A'):
             current_tab = (current_tab + 1) % len(tabs)
             menu_items = tabs[current_tab]
             selected = 0
             scroll_offset = 0
-            k = None
+            continue
 
         if k in ('w', 'W', 'UP'):
             selected = (selected - 1) % len(menu_items)
@@ -3228,7 +3228,7 @@ try:
             selected = (selected + 1) % len(menu_items)
 
         # Direktwahl 1-9
-        if k and isinstance(k, str) and k.isdigit() and k != '0':
+        if k and len(k) == 1 and k.isdigit() and k != '0':
             num = int(k) - 1
             if num < len(menu_items):
                 selected = num
