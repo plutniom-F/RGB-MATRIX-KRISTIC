@@ -703,8 +703,7 @@ class AudioVisualizer:
         sv = int(self.sensitivity*10)
         draw_text(canvas, f"S{sv}", 50, 1, 40, 40, 50)
 
-# Singleton-Instanzen
-spotify_display = SpotifyDisplay()
+# Singleton-Instanz (SpotifyDisplay wird erst nach _apply_spotify_config() erstellt)
 audio_visualizer = AudioVisualizer()
 
 
@@ -2770,8 +2769,7 @@ def _apply_spotify_config():
 
 _apply_spotify_config()
 
-# Spotify-Display neu initialisieren mit den gesetzten Daten
-# (Die Instanz aus Teil 1 hatte evtl. noch keine Keys)
+# Spotify-Display mit den gesetzten Konfigurationswerten erstellen
 spotify_display = SpotifyDisplay()
 
 
