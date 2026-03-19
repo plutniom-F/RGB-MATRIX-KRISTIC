@@ -1,0 +1,65 @@
+^# 1) System aktualisieren
+sudo apt update && sudo apt upgrade -y
+
+# 2) Grundlegende Pakete & Build-Dependencies installieren
+sudo apt install -y git build-essential python3 python3-venv python3-pip python3-dev \
+ libssl-dev libffi-dev libbz2-dev libreadline-dev libsqlite3-dev libncurses5-dev \
+ libjpeg-dev zlib1g-dev libfreetype6-dev liblcms2-dev libopenjp2-7-dev \
+ portaudio19-dev pulseaudio pulseaudio-utils pavucontrol alsa-utils \
+ libatlas-base-dev gfortran
+
+# 3) (Optional aber empfohlen) User zu Hardware-Gruppen hinzufügen (GPIO/SPI/I2C)
+sudo usermod -aG gpio,spi,i2c $USER
+
+# 4) (optional) Neustart, damit Gruppenänderung greift
+echo "Gruppen geändert. Falls du gerade die Sitzung neu starten willst: reboot"
+# reboot
+
+# 5) Virtuelle Python‑Umgebung anlegen und aktivieren
+python3 -m venv ~/rgbm_env
+source ~/rgbm_env/bin/activate
+pip install --upgrade pip setuptools wheel
+
+# 6) Wichtige Python‑Pakete installieren
+pip install numpy Pillow spotipy
+
+# 6b) PyAudio (kann manchmal kompiliert werden; PortAudio dev bereits installiert). Alternative: apt-install falls verfügbar.
+pip install pyaudio || sudo apt install -y python3-pyaudio || echo "PyAudio-Install fehlgeschlagen; versuche python3-pyaudio apt-Paket."
+
+# 7) Clone & Build rpi-rgb-led-matrix (hzeller) - folge ggf. README des Repos
+cd ~
+git clone https://github.com/hzeller/rpi-rgb-led-matrix.git
+cd rpi-rgb-led-matrix
+# optional prüfen: README für hardware-mapping / pinouts
+# baue Python-Bindings (dieser Schritt kann je nach Repo-Version variieren)
+make build-python || make
+cd bindings/python
+sudo python3 setup.py install
+
+# 8) (Optional) PulseAudio Null-Sink / Loopback einrichten (für Visualizer)
+pactl load-module module-null-sink sink_name=vis_sink
+pactl load-module module-loopback source=vis_sink.monitor
+# dauerhaft machen:
+echo "load-module module-null-sink sink_name=vis_sink" | sudo tee -a /etc/pulse/default.pa
+echo "load-module module-loopback source=vis_sink.monitor" | sudo tee -a /etc/pulse/default.pa
+
+# 9) Projektverzeichnis anlegen / Dateien kopieren (ersetze mit deinem Pfad)
+mkdir -p ~/rgb_matrix_games
+# kopiere deine Skripte hinein oder git-clone dein repo
+# cp /pfad/zu/deinem/backup/*.py ~/rgb_matrix_games/
+cd ~/rgb_matrix_games
+
+# 10) (Optional) Spotify credentials setzen (für Spotipy OAuth; setze echte Werte)
+export SPOTIPY_CLIENT_ID="DEINE_CLIENT_ID"
+export SPOTIPY_CLIENT_SECRET="DEIN_CLIENT_SECRET"
+export SPOTIPY_REDIRECT_URI="http://127.0.0.1:8888/callback"
+# dauerhaft speichern:
+echo 'export SPOTIPY_CLIENT_ID="DEINE_CLIENT_ID"' >> ~/.profile
+echo 'export SPOTIPY_CLIENT_SECRET="DEIN_CLIENT_SECRET"' >> ~/.profile
+echo 'export SPOTIPY_REDIRECT_URI="http://127.0.0.1:8888/callback"' >> ~/.profile
+
+# 11) Skript starten (virtuelle Umgebung aktivieren falls nötig)
+source ~/rgbm_env/bin/activate
+# Falls matrix native Zugriff auf /dev/mem/GPIO/Hardware benötigt, eventuell mit sudo starten:
+# sudo python3 rgb_matrix_games_NEUStand_part5_3_menu.py
+python3 rgb_matrix_games_NEUStand_part5_3_menu.py
